@@ -94,6 +94,7 @@ function render(result, manifest = null) {
   choose(rows.find((row) => row.band_hz === state.band)?.band_hz ?? rows[0]?.band_hz ?? 0);
   panels.intake(result.intake);
   panels.calibration(result.calibration);
+  panels.shorteningPanel(result.shortening);
   controls();
 }
 

@@ -9,6 +9,10 @@ REASONS = {
     'DYNAMIC_RANGE': '声衰减深度不足', 'WINDOW_TOO_SHORT': '回归区间采样点不足',
     'NON_DECAYING': '回归斜率无效', 'LOW_LINEARITY': '回归线性度低于阈值',
     'T_DISAGREEMENT': 'T20 与 T30 差异超过阈值', 'DUPLICATE_ROW': '同一采样点的相同副本',
+    'SEGMENT_SHORTENED': '坏行断开后采用连续采样缩短段，未跨缺口拼接',
+    'SEGMENT_BLOCKED': '各连续采样段均无法支撑估计，整带退回补测',
+    'INTEGRITY_FATAL': '数据完整性缺陷不可缩短，整带退回补测',
+    'EXCLUDED_RUN': '未采信的连续采样段，仅留档不参与回归',
 }
 
 

@@ -29,7 +29,7 @@ def read(content):
     stream = csv.reader(io.StringIO(text, newline=''), strict=True)
     valid, invalid = defaultdict(list), defaultdict(list)
     issues = []
-    counts = dict(input=0, accepted=0, isolated=0, duplicate=0, blank=0, repeated_headers=0)
+    counts = dict(input=0, accepted=0, isolated=0, duplicate=0, blank=0, repeated_headers=0, excluded=0)
     header = None
     try:
         while True:
@@ -76,13 +76,14 @@ def read(content):
         raise Problem('HEADER_ONLY', '表头后没有响应记录')
     bands, rejected = [], []
     for hz in sorted(valid.keys() | invalid.keys()):
-        band, failure, duplicates, rejected_count = check_band(hz, valid[hz], invalid[hz])
+        band, failure, duplicates, rejected_count, duplicate_count = check_band(hz, valid[hz], invalid[hz])
         if band:
+            # 可恢复缺陷带保留在 bands，按连续采样段缩短；仅致命缺陷带进入 rejected
             bands.append(band)
             counts['accepted'] += len(band.samples)
-        if failure:
+        if failure and not band:
             rejected.append(failure)
             counts['isolated'] += rejected_count
         issues.extend(duplicates)
-        counts['duplicate'] += len(duplicates)
+        counts['duplicate'] += duplicate_count
     return Intake(bands, rejected, sorted(issues, key=lambda item: item['line']), counts, encoding)

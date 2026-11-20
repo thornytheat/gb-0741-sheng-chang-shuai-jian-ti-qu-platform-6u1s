@@ -1,7 +1,11 @@
 export const $ = (id) => document.getElementById(id);
 export const fixed = (value, digits = 3) => value == null ? '—' : Number(value).toFixed(digits);
 const scientific = (value) => value == null ? '—' : value.toExponential(3);
-const states = {FIT: ['可拟合', 'good'], INSUFFICIENT: ['范围不足', 'warn'], ISOLATED: ['隔离', 'bad']};
+const states = {
+  FIT: ['可拟合', 'good'], INSUFFICIENT: ['范围不足', 'warn'], ISOLATED: ['隔离', 'bad'],
+  REMEASURE: ['退回补测', 'bad'],
+};
+const modes = {FULL: '整带', SHORTENED: '缩短采信', BLOCKED: '段不成立', FATAL: '完整性拒收'};
 
 function el(tag, text, className) {
   const node = document.createElement(tag);
@@ -34,8 +38,9 @@ function evidence(title, body) {
 }
 
 function table(host, headers, rows, selected = -1) {
+  const target = typeof host === 'string' ? $(host) : host;
   if (!rows.length) {
-    $(host).replaceChildren(el('p', '暂无记录', 'empty'));
+    target.replaceChildren(el('p', '暂无记录', 'empty'));
     return;
   }
   const node = el('table', null, 'ledger');
@@ -58,7 +63,7 @@ function table(host, headers, rows, selected = -1) {
       }
     }
   });
-  $(host).replaceChildren(node);
+  target.replaceChildren(node);
 }
 
 export function fitPanel(fit, row) {
@@ -100,21 +105,75 @@ export function noisePanel(noise) {
 
 export function reconcile(data, band, pick) {
   const totals = data.totals;
-  for (const key of ['fitted', 'insufficient', 'isolated', 'flagged']) $(key).textContent = totals[key];
-  $('difference').textContent = totals.band_difference;
-  $('balance').textContent = data.status === 'MATCHED' ? '频带、样本已对平' : '存在勾稽差额';
-  table('band-table', ['Hz', '判定', 'T20 / s', 'T30 / s', '标差', '证据'], data.bands.map((row) => {
+  for (const key of ['fitted', 'insufficient', 'flagged']) $(key).textContent = totals[key];
+  $('shortened').textContent = totals.shortened ?? 0;
+  $('remeasure').textContent = totals.remeasure ?? 0;
+  $('excluded').textContent = totals.excluded_rows ?? 0;
+  $('balance').textContent = data.status === 'MATCHED' ? '频带、样本已对平' : `存在勾稽差额（行 ${totals.row_difference} / 带 ${totals.band_difference}）`;
+  table('band-table', ['Hz', '判定', '采信方式', 'T20 / s', 'T30 / s', '标差', '证据'], data.bands.map((row) => {
     const [label, style] = states[row.status];
+    const adopted = row.shortening?.adopted_lines;
+    const range = adopted ? el('span', `行 ${adopted.first}–${adopted.last}`, 'muted') : (modes[row.mode] ?? '—');
     return [action(`${row.band_hz}`, () => pick(row.band_hz)), el('span', label, `status-label ${style}`),
+      el('span', modes[row.mode] ?? '—', row.mode === 'SHORTENED' ? 'status-label good' : 'muted'),
       fixed(row.t20_s), fixed(row.t30_s), row.gap_flag ? el('span', `${fixed(100 * row.relative_gap, 1)}%`, 'warn') : '—',
       action('查看', () => evidence(`${row.band_hz} Hz 判定`, row))];
   }), data.bands.findIndex((row) => row.band_hz === band));
+  renderAcceptance(data);
+}
+
+function renderAcceptance(data) {
+  const panel = $('acceptance-panel');
+  const acceptance = data.acceptance;
+  if (!acceptance) { panel.hidden = true; return; }
+  panel.hidden = false;
+  const ok = acceptance.acceptable;
+  $('acceptance-title').textContent = ok ? '缩短结果可验收' : '缩短结果不可整体验收，存在退回补测频带';
+  $('acceptance-title').className = ok ? 'good-text' : 'bad-text';
+  $('acceptance-meta').textContent = `整带拟合 ${acceptance.full_fit_bands} · 缩短采信 ${acceptance.shortened_fit_bands} · 退回补测 ${acceptance.remeasure_bands} · 范围不足 ${acceptance.insufficient_bands}`;
+  const blocked = data.bands.filter((row) => row.status === 'REMEASURE')
+    .map((row) => `${row.band_hz} Hz（${modes[row.mode]}：${(row.findings || []).map((f) => f.code).join('、')}）`);
+  const shortened = data.bands.filter((row) => row.mode === 'SHORTENED')
+    .map((row) => `${row.band_hz} Hz 采信行 ${row.shortening.adopted_lines.first}–${row.shortening.adopted_lines.last}`);
+  $('acceptance-body').replaceChildren(
+    el('p', ok ? '所有频带均有可发布拟合或仅为动态范围不足，无退回补测项。' : '以下频带必须补测后才能整体验收：', ok ? 'good-text' : 'bad-text'),
+    ...blocked.map((text) => el('p', `• ${text}`, 'warn')),
+    ...shortened.map((text) => el('p', `• 缩短保留：${text}（曲线、拟合、归档对账至同一采信行）`, 'muted')),
+  );
+}
+
+export function shorteningPanel(shortening) {
+  const host = $('shortening-body');
+  if (!shortening || !shortening.bands.length) {
+    host.replaceChildren(el('p', '该来源没有坏行断开的频带，全部按整带连续采样处理。', 'empty'));
+    return;
+  }
+  const blocks = shortening.bands.map((item) => {
+    const wrap = el('div', null, 'segment-block');
+    const head = el('div', null, 'segment-head');
+    head.append(el('strong', `${item.band_hz} Hz`),
+      el('span', item.adopted_label ? `采信 ${item.adopted_label} · ${item.reason.message}` : `退回补测 · ${item.reason.message}`,
+        item.adopted_label ? 'status-label good' : 'status-label bad'));
+    const rows = item.segments.map((seg) => [
+      seg.label, `序号 ${seg.start_index}–${seg.end_index}`, `行 ${seg.first_line}–${seg.last_line}`, seg.sample_count,
+      fixed(seg.usable_depth_db, 1),
+      seg.adopted ? el('span', '采信', 'status-label good') : seg.admissible ? el('span', '留档未采信', 'status-label warn')
+        : el('span', `挡下 · ${seg.block_reason?.code ?? ''}`, 'status-label bad'),
+      fixed(seg.t20_rt60_s), fixed(seg.t30_rt60_s),
+    ]);
+    const holder = el('div', null, 'shortening-table');
+    table(holder, ['连续段', '采样序号', '来源行', '点数', '可用深度/dB', '处置', 'T20/s', 'T30/s'], rows);
+    wrap.append(head, holder);
+    return wrap;
+  });
+  host.replaceChildren(...blocks);
 }
 
 export function intake(data) {
   const count = data.counts;
   $('intake-data').replaceChildren(specs([['编码', data.encoding], ['输入记录', count.input], ['采信', count.accepted],
-    ['隔离', count.isolated], ['重复', count.duplicate], ['空白', count.blank], ['重复表头', count.repeated_headers]]));
+    ['隔离', count.isolated], ['排除段', count.excluded ?? 0], ['重复', count.duplicate], ['空白', count.blank],
+    ['重复表头', count.repeated_headers]]));
   const findings = data.isolated_bands.flatMap((band) => band.findings.map((item) => ({band_hz: band.band_hz, ...item})));
   const rows = [...findings, ...data.row_issues];
   table('intake-issues', ['频带 / Hz', '来源行', '原因码', '证据'], rows.map((row) => [row.band_hz, row.line ?? row.lines?.join('、'),

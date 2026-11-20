@@ -28,6 +28,23 @@ class Band:
     hz: int
     calibration: Calibration
     samples: list[Sample]
+    segments: tuple['Segment', ...] = ()
+    recoverable: bool = True
+    defects: tuple[dict, ...] = ()
+
+
+@dataclass(frozen=True)
+class Segment:
+    label: str
+    samples: tuple[Sample, ...]
+    start_index: int
+    end_index: int
+    first_line: int
+    last_line: int
+
+    @property
+    def length(self):
+        return len(self.samples)
 
 
 @dataclass

@@ -56,6 +56,32 @@ def test_corrupt_digest_blocks_export_and_rerun(client):
     assert [(reply.status_code, reply.json()['code']) for reply in (export, retry)] == [(409, 'EVIDENCE_CHANGED')] * 2
 
 
+def test_shortened_result_is_deterministic_across_reruns(client):
+    first = client.post('/api/runs', json={'sample': 'hall'}).json()
+    second = client.post(f"/api/runs/{first['id']}/rerun").json()
+    # 同源重跑：同一批次编号、同一摘要、同一采信行，绝不新增采信结果
+    assert second['id'] == first['id'] and second['reused']
+    assert second['manifest']['digest'] == first['manifest']['digest']
+    adopted_one = [b for b in first['result']['reconcile']['bands'] if b.get('mode') == 'SHORTENED']
+    adopted_two = [b for b in second['result']['reconcile']['bands'] if b.get('mode') == 'SHORTENED']
+    assert adopted_one == adopted_two and len(adopted_one) == 1
+    assert adopted_one[0]['shortening']['adopted_lines'] == {
+        'first': 1202, 'last': 2200, 'start_index': 101, 'end_index': 1099}
+
+
+def test_rule_version_change_invalidates_prior_archive(client, monkeypatch):
+    from app.modules.m7_archive import service
+    first = client.post('/api/runs', json={'sample': 'reference'}).json()
+    # 模拟采信规则更新：版本号变化后旧批次重跑被拒绝，需按新规则重算
+    monkeypatch.setattr(service, 'RULE_VERSION', 'rt-schroeder-9')
+    refused = client.post(f"/api/runs/{first['id']}/rerun")
+    assert (refused.status_code, refused.json()['code']) == (409, 'VERSION_CHANGED')
+    monkeypatch.setattr(service, 'key', lambda source_id: service.sha256(
+        service.canonical({'source_id': source_id, 'version': 'rt-schroeder-9'})))
+    new_run = client.post('/api/runs', json={'sample': 'reference'}).json()
+    assert new_run['id'] != first['id'] and new_run['manifest']['version'] == 'rt-schroeder-9'
+
+
 def test_missing_or_ambiguous_source_has_clear_errors(client):
     missing = client.post('/api/runs', json={'sample':'bad'})
     ambiguous = client.post('/api/runs', json={'sample':'reference','source_id':'bad'})

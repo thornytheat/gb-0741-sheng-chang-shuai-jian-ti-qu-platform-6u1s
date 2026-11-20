@@ -4,10 +4,18 @@ from app.evidence import sha256
 from app.modules.m1_intake.reader import read
 
 
+def segment_summary(band):
+    return [{'label': segment.label, 'start_index': segment.start_index, 'end_index': segment.end_index,
+             'first_line': segment.first_line, 'last_line': segment.last_line, 'sample_count': segment.length}
+            for segment in band.segments]
+
+
 def summary(source_id, data):
     return {'source_id': source_id, 'encoding': data.encoding, 'counts': data.counts,
             'bands': [{'band_hz': band.hz, 'calibration': band.calibration.public(),
-                       'first_line': band.samples[0].line, 'last_line': band.samples[-1].line} for band in data.bands],
+                       'first_line': band.samples[0].line, 'last_line': band.samples[-1].line,
+                       'recoverable': band.recoverable, 'defects': list(band.defects),
+                       'segments': segment_summary(band)} for band in data.bands],
             'isolated_bands': data.rejected_bands, 'row_issues': data.row_issues}
 
 

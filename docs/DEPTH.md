@@ -9,7 +9,7 @@
 |---|---|---|---|---|
 | M1 脉冲响应收件 | 导入带时间索引的 CSV，定位缺点和矛盾 | `POST /api/intake` | `app/modules/m1_intake/reader.py` `app/modules/m1_intake/continuity.py` | `tests/test_intake.py` |
 | M2 量纲校准 | 查看压力系数、直达声索引和来源行 | `GET /api/calibration/{source_id}` | `app/modules/m2_calibration/units.py` | `tests/test_calibration.py` |
-| M3 能量衰减 | 检查扣噪后反向能量积分结果 | `GET /api/decay/{source_id}` | `app/modules/m3_decay/integral.py` `app/modules/m3_decay/service.py` | `tests/test_decay.py` |
+| M3 能量衰减 | 检查扣噪后反向能量积分结果 | `GET /api/decay/{source_id}` | `app/modules/m3_decay/integral.py` `app/modules/m3_decay/segments.py` `app/modules/m3_decay/service.py` | `tests/test_decay.py` `tests/test_segments.py` |
 | M4 拟合时段 | 读取 T20 与 T30 时间窗、回归系数及质量 | `GET /api/fit/{source_id}` | `app/modules/m4_fit/windows.py` `app/modules/m4_fit/regression.py` | `tests/test_fit.py` |
 | M5 噪声判废 | 核对尾段噪声和两档动态范围 | `GET /api/noise/{source_id}` | `app/modules/m5_noise/gate.py` | `tests/test_noise.py` |
 | M6 频段勾稽 | 对频带和采样行勾稽，查看双档差异 | `GET /api/reconcile/{source_id}` | `app/modules/m6_reconcile/service.py` `app/modules/m6_reconcile/comparison.py` | `tests/test_reconcile.py` |
@@ -33,7 +33,12 @@
 | TRAP-18 | 零字节、全空与仅表头 | 记录空结果为成功 | 返回独立的文件级原因 | `app/modules/m1_intake/reader.py` | `tests/test_intake.py::test_empty_cases_raise_distinct_codes` |
 | TRAP-19 | 测试中一个低块夹在可用区间 | 瞬态低块误判整个尾段 | 连续两块才截断 | `app/modules/m5_noise/gate.py` | `tests/test_noise.py::test_consecutive_low_blocks_cut_at_first_block` |
 | TRAP-23 | 测试曲线阈值等于样本值 | 跳过等号或将越界点纳入 | 明确交点与回归右端排除 | `app/modules/m4_fit/windows.py` | `tests/test_fit.py::test_threshold_crossing_interpolates_and_has_exclusive_stop` |
+| TRAP-24 | 坏行断开后直接拼接样本 | 缺口被当成零能量衰减，污染反向积分 | 按采样序号切连续段，段内严格 +1，绝不跨缺口拼接 | `app/modules/m1_intake/continuity.py` `app/modules/m3_decay/segments.py` | `tests/test_segments.py::test_build_segments_never_joins_across_index_gap` |
+| TRAP-25 | 整带丢弃导致可用频带进不了验收 | 可估计的缩短段被一并报废 | 逐段过同一质量门槛，可估计段保留可追溯缩短结论 | `app/modules/m3_decay/segments.py` | `tests/test_segments.py::test_middle_gap_with_estimable_post_gap_run_is_shortened` |
+| TRAP-26 | 矛盾重复值被当成可恢复缺点 | 用错误值补出看似连续的序列 | 完整性致命缺陷禁止缩短，整带退回补测 | `app/modules/m1_intake/continuity.py` | `tests/test_segments.py::test_contradictory_duplicate_is_fatal_and_never_shortened` |
+| TRAP-27 | 评估重算改动收件原始计数 | 归档与 `/api/intake` 快照对不上 | 评估在工作副本上重分类采信/排除行，收件计数不变 | `app/modules/m6_reconcile/service.py` | `tests/test_e2e.py` |
+| TRAP-28 | 采信规则更新后旧结论仍被复用 | 同源重跑悄悄沿用过期采信 | 规则版本入批次编号，版本不符 `VERSION_CHANGED` 作废重算 | `app/modules/m7_archive/service.py` `app/config.py` | `tests/test_archive.py::test_rule_version_change_invalidates_prior_archive` |
 
 ## 对账断言
 
-礼堂样例共 8 个频带，4 个可拟合、1 个动态范围不足、3 个隔离，频带及采样行差额均为零。8000 Hz 两档标差约 22.26%。
+礼堂样例共 8 个频带：4 个整带可拟合、1 个缩短采信（250 Hz，采信序号 101–1099 / 行 1202–2200，T20≈T30≈0.66 s）、1 个动态范围不足、2 个退回补测（63 Hz 两段分别尾段过短、深度不足；2000 Hz 矛盾重复致命）。排除采样行 399，频带及采样行差额均为零。8000 Hz 两档标差约 22.26%。存在退回补测频带时 `acceptance.acceptable=false`。

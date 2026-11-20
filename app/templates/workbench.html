@@ -39,11 +39,16 @@
       <p id="run-feedback" role="status" hidden></p>
       <div class="kpis">
         <div class="kpi"><span>可拟合</span><strong id="fitted">—</strong><small>频带</small></div>
+        <div class="kpi"><span>缩短采信</span><strong id="shortened">—</strong><small>频带</small></div>
+        <div class="kpi"><span>退回补测</span><strong id="remeasure">—</strong><small>频带</small></div>
         <div class="kpi"><span>动态范围不足</span><strong id="insufficient">—</strong><small>频带</small></div>
-        <div class="kpi"><span>隔离</span><strong id="isolated">—</strong><small>频带</small></div>
-        <div class="kpi"><span>频带差额</span><strong id="difference">—</strong><small>频带</small></div>
+        <div class="kpi"><span>排除采样行</span><strong id="excluded">—</strong><small>行</small></div>
         <div class="kpi"><span>拟合标差</span><strong id="flagged">—</strong><small>频带</small></div>
       </div>
+      <section class="panel acceptance" id="acceptance-panel" hidden>
+        <div class="panel-head"><h2 id="acceptance-title">缩短验收结论</h2><span class="muted" id="acceptance-meta">—</span></div>
+        <div id="acceptance-body" class="body"></div>
+      </section>
       <div id="analysis" class="analysis grid">
         <section class="panel graph" id="decay"><div class="panel-head"><div><h2>能量衰减</h2><span class="muted" id="frequency">— Hz</span></div><div class="legend"><span><i></i>积分曲线</span><span><i></i>拟合区间</span><span><i></i>噪声底</span></div></div>
           <div class="plot-box"><canvas id="plot" role="img" aria-label="能量衰减曲线"></canvas><p id="plot-empty" class="empty">请先运行提取</p></div>
@@ -51,6 +56,7 @@
         </section>
         <section class="panel fit" id="fit"><div class="panel-head"><h2>拟合时段</h2><span class="muted">RT60 / s</span></div><div id="fit-tiles" class="body"><p class="empty">等待回归区间</p></div></section>
         <section class="panel noise" id="noise"><div class="panel-head"><h2>噪声判废</h2><span class="muted">尾段噪声估计</span></div><div id="noise-body" class="body"><p class="empty">等待噪声测量</p></div></section>
+        <section class="panel shortening" id="shortening"><div class="panel-head"><h2>连续采样缩短</h2><span class="muted">采信段与挡下行</span></div><div id="shortening-body" class="body"><p class="empty">等待坏行复核</p></div></section>
         <section class="panel reconcile" id="reconcile"><div class="panel-head"><h2>频段勾稽</h2><span id="balance" class="muted">—</span></div><div id="band-table" class="table-wrap"><p class="empty">暂无频带结论</p></div></section>
       </div>
       <div class="grid auxiliary">
